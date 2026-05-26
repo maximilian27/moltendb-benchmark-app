@@ -10,12 +10,18 @@ permissions:
 
 jobs:
   bump_version:
-    if: "!startsWith(github.event.head_commit.message, 'chore: bump version')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # IMPORTANT: Use a Personal Access Token (PAT) here if you want the pushed tag
+          # to trigger a subsequent release workflow (e.g., compiling the Tauri app).
+          # If you use the default GITHUB_TOKEN, the next workflow will not run.
+          token: ${{ secrets.PAT_TOKEN }}
+
+          # IMPORTANT: Check out the actual branch so we aren't in a detached HEAD state.
+          # This allows `git push origin master` to work correctly.
+          ref: master
 
       - name: Setup node
         uses: actions/setup-node@v4
