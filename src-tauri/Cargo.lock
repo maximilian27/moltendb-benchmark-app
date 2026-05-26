@@ -2080,7 +2080,7 @@ dependencies = [
 
 [[package]]
 name = "moltendb-benchmark-app"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "moltendb-core",
  "serde",
