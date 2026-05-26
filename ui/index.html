@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>MoltenDB Benchmark</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#121212;color:#f8fafc;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+  /* ── Top bar ── */
+  .topbar{background:#1e1e1e;border-bottom:1px solid #2e2e2e;padding:10px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0;flex-wrap:wrap}
+  .topbar h1{font-size:1rem;font-weight:700;color:#fb923c;white-space:nowrap}
+  .topbar label{font-size:0.78rem;color:#94a3b8}
+  .topbar select,.topbar input{background:#2a2a2a;border:1px solid #404040;color:#f8fafc;border-radius:6px;padding:4px 8px;font-size:0.8rem}
+  .topbar input{width:180px}
+  .topbar select{width:130px}
+  #insert-btn{background:#f97316;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap}
+  #insert-btn:disabled{opacity:0.5;cursor:not-allowed}
+  .insert-summary{font-size:0.78rem;color:#cbd5e1;white-space:nowrap}
+
+  /* ── Progress ── */
+  #progress-wrap{width:100%;display:none;align-items:center;gap:8px;padding:4px 20px;background:#1e1e1e;border-bottom:1px solid #2e2e2e;flex-shrink:0}
+  #progress-wrap.visible{display:flex}
+  #progress-msg{font-size:0.75rem;color:#cbd5e1;min-width:260px}
+  #progress-track{flex:1;height:6px;background:#2e2e2e;border-radius:3px;overflow:hidden}
+  #progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#f97316,#fb923c);border-radius:3px;transition:width 0.3s ease}
+
+  /* ── Split layout ── */
+  .split{display:flex;flex:1;overflow:hidden}
+
+  /* ── Left panel: queries ── */
+  .left-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #2e2e2e}
+  .panel-header{padding:10px 16px;background:#1e1e1e;border-bottom:1px solid #2e2e2e;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+  .panel-header h2{font-size:0.85rem;font-weight:600;color:#cbd5e1}
+  #run-all-btn{background:#2a2a2a;color:#7dd3fc;border:1px solid #404040;border-radius:6px;padding:4px 12px;font-size:0.78rem;cursor:pointer}
+  #run-all-btn:disabled{opacity:0.5;cursor:not-allowed}
+  .queries-scroll{flex:1;overflow-y:auto;padding:8px 12px}
+
+  /* ── Query group ── */
+  .query-group{margin-bottom:12px}
+  .query-group-title{font-size:0.72rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;padding:4px 0 6px}
+
+  /* ── Query item ── */
+  .query-item{border:1px solid #2e2e2e;border-radius:8px;margin-bottom:6px;overflow:hidden}
+  .query-row{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#1e1e1e}
+  .run-query-btn{background:#2a2a2a;color:#7dd3fc;border:1px solid #404040;border-radius:5px;padding:3px 9px;font-size:0.75rem;cursor:pointer;white-space:nowrap;flex-shrink:0}
+  .run-query-btn:hover{background:#404040}
+  .query-name{font-size:0.78rem;color:#cbd5e1;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .query-bar-wrap{width:80px;height:6px;background:#2e2e2e;border-radius:3px;overflow:hidden;flex-shrink:0}
+  .query-bar{height:100%;width:0%;background:#f97316;border-radius:3px;transition:width 0.4s ease}
+  .query-result{font-size:0.75rem;color:#a1a1aa;white-space:nowrap;flex-shrink:0;min-width:90px;text-align:right}
+  .query-result.ok{color:#86efac}
+  .query-result.error{color:#f87171}
+
+  /* ── Editable JSON editor ── */
+  .query-editor{background:#0f0f0f;border-top:1px solid #2e2e2e;padding:8px 10px}
+  .query-editor textarea{width:100%;background:#1e1e1e;border:1px solid #404040;color:#7dd3fc;border-radius:5px;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.72rem;padding:6px 8px;resize:vertical;min-height:80px;outline:none;line-height:1.5}
+  .query-editor textarea:focus{border-color:#f97316}
+  .editor-actions{display:flex;align-items:center;gap:8px;margin-top:5px}
+  .editor-actions .run-query-btn{font-size:0.72rem}
+  .query-name-input{flex:1;background:#2e2e2e;border:1px solid #404040;color:#f8fafc;border-radius:5px;padding:3px 7px;font-size:0.72rem;outline:none}
+  .query-name-input:focus{border-color:#f97316}
+
+  /* ── Result data panel ── */
+  .query-result-data{display:none;background:#0f0f0f;border-top:1px solid #2e2e2e}
+  .query-result-data.visible{display:block}
+  .result-data-header{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:#1e1e1e;font-size:0.72rem;color:#94a3b8;cursor:pointer;user-select:none}
+  .result-data-header:hover{color:#cbd5e1}
+  .result-data-body{max-height:240px;overflow-y:auto;padding:8px 10px}
+  .result-data-body pre{font-family:'Cascadia Code','Fira Code',monospace;font-size:0.72rem;color:#cbd5e1;white-space:pre-wrap;word-break:break-all}
+  .result-data-body pre .key{color:#7dd3fc}
+  .result-data-body pre .str{color:#86efac}
+  .result-data-body pre .num{color:#fbbf24}
+  .result-data-body pre .bool{color:#f472b6}
+  .result-data-body pre .null{color:#cbd5e1}
+
+  /* ── Right panel: stats ── */
+  .right-panel{width:340px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:#121212}
+  .stats-scroll{flex:1;overflow-y:auto;padding:10px 12px}
+  .stats-section{margin-bottom:14px}
+  .stats-section h3{font-size:0.72rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+  .stat-card{background:#1e1e1e;border:1px solid #2e2e2e;border-radius:8px;padding:10px 12px;margin-bottom:6px}
+  .stat-card .label{font-size:0.7rem;color:#94a3b8;margin-bottom:2px}
+  .stat-card .value{font-size:1.1rem;font-weight:700;color:#f97316}
+  .stat-card .sub{font-size:0.7rem;color:#a1a1aa;margin-top:2px}
+  .stat-row{display:flex;gap:6px;margin-bottom:6px}
+  .stat-row .stat-card{flex:1;margin-bottom:0}
+
+  /* ── Collection bar chart ── */
+  .col-chart{background:#1e1e1e;border:1px solid #2e2e2e;border-radius:8px;padding:10px 12px}
+  .col-chart-title{font-size:0.7rem;color:#94a3b8;margin-bottom:8px}
+  .col-bar-row{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+  .col-bar-label{font-size:0.7rem;color:#cbd5e1;width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
+  .col-bar-track{flex:1;height:10px;background:#2e2e2e;border-radius:3px;overflow:hidden}
+  .col-bar-fill{height:100%;background:linear-gradient(90deg,#f97316,#fb923c);border-radius:3px;transition:width 0.5s ease}
+  .col-bar-count{font-size:0.68rem;color:#a1a1aa;width:50px;text-align:right;flex-shrink:0}
+
+  /* ── Refresh indicator ── */
+  .stats-header-row{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#1e1e1e;border-bottom:1px solid #2e2e2e;flex-shrink:0}
+  .stats-header-row h2{font-size:0.85rem;font-weight:600;color:#cbd5e1}
+  .refresh-dot{width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;margin-right:5px;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+  .refresh-label{font-size:0.7rem;color:#94a3b8}
+  #no-db-msg{font-size:0.78rem;color:#94a3b8;text-align:center;padding:30px 10px}
+
+  /* ── Subtle scrollbars ── */
+  ::-webkit-scrollbar{width:4px;height:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:4px}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.18)}
+  * { scrollbar-width:thin; scrollbar-color:rgba(255,255,255,0.08) transparent }
+
+  /* ── Metrics panel ── */
+  .metrics-section{margin-bottom:14px}
+  .metrics-section h3{font-size:0.72rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+  .gauge-wrap{background:#1e1e1e;border:1px solid #2e2e2e;border-radius:8px;padding:10px 12px;margin-bottom:6px}
+  .gauge-label-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .gauge-label{font-size:0.7rem;color:#94a3b8}
+  .gauge-value{font-size:1.2rem;font-weight:700;color:#f97316}
+  .gauge-track{height:8px;background:#2e2e2e;border-radius:4px;overflow:hidden}
+  .gauge-fill{height:100%;border-radius:4px;transition:width 0.5s ease}
+  .gauge-fill.cpu{background:linear-gradient(90deg,#3b82f6,#60a5fa)}
+  .gauge-fill.ram{background:linear-gradient(90deg,#8b5cf6,#a78bfa)}
+  .gauge-fill.warn{background:linear-gradient(90deg,#f59e0b,#fbbf24)}
+  .gauge-fill.danger{background:linear-gradient(90deg,#ef4444,#f87171)}
+  .gauge-sub{font-size:0.68rem;color:#94a3b8;margin-top:4px}
+  .cores-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:4px;margin-top:6px}
+  .core-cell{background:#2e2e2e;border-radius:4px;padding:3px 4px;text-align:center}
+  .core-cell .core-id{font-size:0.58rem;color:#94a3b8}
+  .core-cell .core-pct{font-size:0.7rem;font-weight:600;color:#60a5fa}
+  .disk-row{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  .disk-mount{font-size:0.68rem;color:#cbd5e1;width:36px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
+  .disk-track{flex:1;height:7px;background:#2e2e2e;border-radius:3px;overflow:hidden}
+  .disk-fill{height:100%;border-radius:3px;transition:width 0.5s ease;background:linear-gradient(90deg,#22c55e,#4ade80)}
+  .disk-fill.warn{background:linear-gradient(90deg,#f59e0b,#fbbf24)}
+  .disk-fill.danger{background:linear-gradient(90deg,#ef4444,#f87171)}
+  .disk-info{font-size:0.65rem;color:#94a3b8;white-space:nowrap;flex-shrink:0;min-width:80px;text-align:right}
+  .proc-badge{display:inline-block;background:#2e2e2e;border:1px solid #404040;border-radius:4px;padding:2px 7px;font-size:0.68rem;color:#cbd5e1;margin-top:4px}
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <h1>🔥 MoltenDB Benchmark</h1>
+  <label>Mode
+    <select id="storage-mode">
+      <option value="inMemory">inMemory</option>
+      <option value="async">async</option>
+      <option value="sync">sync</option>
+    </select>
+  </label>
+  <label>Docs
+    <select id="doc-count">
+      <option value="1000">1 000</option>
+      <option value="10000" selected>10 000</option>
+      <option value="100000">100 000</option>
+      <option value="500000">500 000</option>
+      <option value="1000000">1 000 000</option>
+      <option value="5000000">5 000 000</option>
+    </select>
+  </label>
+  <label>DB Path
+    <input id="db-path" type="text" placeholder="benchmark.db" value="benchmark.db"/>
+  </label>
+  <button id="insert-btn">⬇ Insert Data</button>
+  <span class="insert-summary" id="insert-summary"></span>
+</div>
+
+<!-- Progress bar -->
+<div id="progress-wrap">
+  <span id="progress-msg">Preparing…</span>
+  <div id="progress-track"><div id="progress-fill"></div></div>
+</div>
+
+<!-- Split layout -->
+<div class="split">
+
+  <!-- LEFT: Queries -->
+  <div class="left-panel">
+    <div class="panel-header">
+      <h2>Queries</h2>
+      <button id="run-all-btn" disabled>▶ Run All</button>
+    </div>
+    <div class="queries-scroll" id="queries-container">
+      <!-- populated by JS -->
+    </div>
+  </div>
+
+  <!-- RIGHT: Stats + Metrics -->
+  <div class="right-panel">
+    <div class="stats-header-row">
+      <h2>Live Stats</h2>
+      <span><span class="refresh-dot" id="refresh-dot" style="display:none"></span><span class="refresh-label" id="refresh-label">—</span></span>
+    </div>
+    <div class="stats-scroll">
+      <div id="metrics-container"></div>
+      <div id="stats-container">
+        <div id="no-db-msg">Insert data to see DB stats</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const { invoke } = window.__TAURI__.core;
+const { listen }  = window.__TAURI__.event;
+
+// ── Query definitions (id, name, payload) ────────────────────────────────────
+const QUERIES = [
+  { group: '§1 — Point Lookups', queries: [
+    { id: '§1a', name: '§1a Point lookup: stress_000060',
+      payload: { collection: 'stress', keys: 'stress_000060' } },
+    { id: '§1b', name: '§1b Point lookup: mid-range key',
+      payload: { collection: 'stress', keys: 'stress_005000' } },
+    { id: '§1c', name: '§1c Batch fetch: 3 keys',
+      payload: { collection: 'stress', keys: ['stress_000000','stress_002500','stress_007500'] } },
+  ]},
+  { group: '§2 — Field Projection', queries: [
+    { id: '§2a', name: '§2a Projection: brand, model, price',
+      payload: { collection:'stress', keys:['stress_000000','stress_000001','stress_000002'], fields:['brand','model','price'] } },
+    { id: '§2b', name: '§2b Projection: nested CPU specs',
+      payload: { collection:'stress', keys:['stress_000000','stress_000001','stress_000002'], fields:['brand','model','specs.cpu.brand','specs.cpu.cores','specs.cpu.ghz'] } },
+  ]},
+  { group: '§3 — Simple WHERE Filters', queries: [
+    { id: '§3a', name: '§3a WHERE brand = Apple (~12.5%)',
+      payload: { collection:'stress', fields:['brand','model','price'], where:{ brand:{ $eq:'Apple' } } } },
+    { id: '§3b', name: '§3b WHERE in_stock AND price < 1000',
+      payload: { collection:'stress', fields:['brand','model','price','in_stock'], where:{ in_stock:true, price:{ $lt:1000 } } } },
+    { id: '§3c', name: '§3c WHERE price BETWEEN 1500 AND 2500',
+      payload: { collection:'stress', fields:['brand','model','price'], where:{ price:{ $gte:1500, $lte:2500 } } } },
+    { id: '§3d', name: '§3d WHERE cpu.brand != Intel',
+      payload: { collection:'stress', fields:['brand','model','specs.cpu.brand'], where:{ 'specs.cpu.brand':{ $ne:'Intel' } } } },
+    { id: '§3e', name: '§3e WHERE cpu.cores >= 8',
+      payload: { collection:'stress', fields:['brand','model','specs.cpu.cores'], where:{ 'specs.cpu.cores':{ $gte:8 } } } },
+    { id: '§3f', name: "§3f WHERE tags contains 'gaming'",
+      payload: { collection:'stress', fields:['brand','model','tags','price'], where:{ tags:{ $ct:'gaming' } } } },
+    { id: '§3g', name: '§3g WHERE display.panel = OLED',
+      payload: { collection:'stress', fields:['brand','model','display.panel','price'], where:{ 'display.panel':{ $eq:'OLED' } } } },
+    { id: '§3i', name: '§3i WHERE brand IN [Apple, Dell, Razer]',
+      payload: { collection:'stress', fields:['brand','model','price'], where:{ brand:{ $in:['Apple','Dell','Razer'] } } } },
+    { id: '§3j', name: '§3j WHERE brand NIN [Framework, Lenovo]',
+      payload: { collection:'stress', fields:['brand','model','price'], where:{ brand:{ $nin:['Framework','Lenovo'] } } } },
+  ]},
+  { group: '§4 — Logical Operators', queries: [
+    { id: '§4a', name: '§4a $or: Apple OR gaming tag',
+      payload: { collection:'stress', fields:['brand','model','tags'], where:{ $or:[{ brand:{ $eq:'Apple' } },{ tags:{ $ct:'gaming' } }] } } },
+    { id: '§4b', name: '§4b $and: in_stock AND price<1500 AND cores>=8',
+      payload: { collection:'stress', fields:['brand','model','price','specs.cpu.cores'], where:{ $and:[{ in_stock:true },{ price:{ $lt:1500 } },{ 'specs.cpu.cores':{ $gte:8 } }] } } },
+    { id: '§4c', name: '§4c $or + top-level: in_stock AND (Apple OR Dell)',
+      payload: { collection:'stress', fields:['brand','model','price'], where:{ in_stock:true, $or:[{ brand:{ $eq:'Apple' } },{ brand:{ $eq:'Dell' } }] } } },
+    { id: '§4d', name: '§4d $or nested: Mini-LED OR OLED display',
+      payload: { collection:'stress', fields:['brand','model','display.panel','price'], where:{ $or:[{ 'display.panel':{ $eq:'Mini-LED' } },{ 'display.panel':{ $eq:'OLED' } }] } } },
+  ]},
+  { group: '§5 — Sort', queries: [
+    { id: '§5a', name: '§5a Sort: Apple by price asc',
+      payload: { collection:'stress', fields:['brand','model','price'], where:{ brand:{ $eq:'Apple' } }, sort:[{ field:'price', order:'asc' }] } },
+    { id: '§5c', name: '§5c Multi-sort: brand asc, price asc',
+      payload: { collection:'stress', fields:['brand','model','price'], sort:[{ field:'brand', order:'asc' },{ field:'price', order:'asc' }] } },
+    { id: '§5d', name: '§5d Sort: cpu.cores desc',
+      payload: { collection:'stress', fields:['brand','model','specs.cpu.cores'], sort:[{ field:'specs.cpu.cores', order:'desc' }] } },
+  ]},
+  { group: '§6 — Pagination', queries: [
+    { id: '§6a', name: '§6a Top 10 cheapest',
+      payload: { collection:'stress', fields:['brand','model','price'], sort:[{ field:'price', order:'asc' }], count:10 } },
+    { id: '§6b', name: '§6b Page 2 cheapest (skip 10, take 10)',
+      payload: { collection:'stress', fields:['brand','model','price'], sort:[{ field:'price', order:'asc' }], offset:10, count:10 } },
+    { id: '§6d', name: '§6d Top 5 most expensive gaming items',
+      payload: { collection:'stress', fields:['brand','model','price','tags'], where:{ tags:{ $ct:'gaming' } }, sort:[{ field:'price', order:'desc' }], count:5 } },
+  ]},
+  { group: '§7 — Combined WHERE + Sort + Pagination', queries: [
+    { id: '§7a', name: '§7a In-stock OLED, price asc, top 10',
+      payload: { collection:'stress', fields:['brand','model','price','display.panel'], where:{ in_stock:true, 'display.panel':{ $eq:'OLED' } }, sort:[{ field:'price', order:'asc' }], count:10 } },
+    { id: '§7b', name: '§7b Non-Apple/Lenovo, 120Hz+, sort refresh desc, top 20',
+      payload: { collection:'stress', fields:['brand','model','display.refresh_hz','price'], where:{ brand:{ $nin:['Apple','Lenovo'] }, 'display.refresh_hz':{ $gte:120 } }, sort:[{ field:'display.refresh_hz', order:'desc' }], count:20 } },
+    { id: '§7c', name: '§7c Lightweight in-stock (<1.5kg), sort weight asc, top 10',
+      payload: { collection:'stress', fields:['brand','model','specs.weight_kg','price'], where:{ in_stock:true, 'specs.weight_kg':{ $lt:1.5 } }, sort:[{ field:'specs.weight_kg', order:'asc' }], count:10 } },
+  ]},
+];
+
+// ── Build query UI ────────────────────────────────────────────────────────────
+const container = document.getElementById('queries-container');
+QUERIES.forEach(group => {
+  const gDiv = document.createElement('div');
+  gDiv.className = 'query-group';
+  gDiv.innerHTML = `<div class="query-group-title">${group.group}</div>`;
+  group.queries.forEach(q => {
+    const item = document.createElement('div');
+    item.className = 'query-item';
+    item.dataset.id = q.id;
+    item.innerHTML = `
+      <div class="query-row">
+        <span class="query-name">${q.name}</span>
+        <div class="query-bar-wrap"><div class="query-bar"></div></div>
+        <span class="query-result">—</span>
+      </div>
+      <div class="query-editor">
+        <div class="editor-actions">
+          <input class="query-name-input" type="text" value="${q.name}" placeholder="Query name"/>
+          <button class="run-query-btn">▶ Run</button>
+        </div>
+        <textarea spellcheck="false">${JSON.stringify(q.payload, null, 2)}</textarea>
+      </div>
+      <div class="query-result-data">
+        <div class="result-data-header">▶ Show results</div>
+        <div class="result-data-body"><pre></pre></div>
+      </div>`;
+    gDiv.appendChild(item);
+  });
+  container.appendChild(gDiv);
+});
+
+// ── Wire up run buttons ───────────────────────────────────────────────────────
+function syntaxHighlight(json) {
+  return json.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, m => {
+      let cls = 'num';
+      if (/^"/.test(m)) cls = /:$/.test(m) ? 'key' : 'str';
+      else if (/true|false/.test(m)) cls = 'bool';
+      else if (/null/.test(m)) cls = 'null';
+      return `<span class="${cls}">${m}</span>`;
+    });
+}
+
+let maxMs = 0;
+function rescaleBars() {
+  document.querySelectorAll('.query-item').forEach(item => {
+    const ms = parseFloat(item.dataset.ms || '0');
+    const bar = item.querySelector('.query-bar');
+    if (bar && maxMs > 0) bar.style.width = (ms / maxMs * 100) + '%';
+  });
+}
+
+async function runItem(item) {
+  const textarea = item.querySelector('textarea');
+  const nameInput = item.querySelector('.query-name-input');
+  const resultEl = item.querySelector('.query-result');
+  const bar = item.querySelector('.query-bar');
+  const nameSpan = item.querySelector('.query-name');
+  const payloadJson = textarea.value;
+  const name = nameInput.value || item.dataset.id;
+
+  resultEl.className = 'query-result';
+  resultEl.textContent = '…';
+  bar.style.width = '0%';
+
+  try {
+    const res = await invoke('run_custom_query', { name, payloadJson });
+    resultEl.className = 'query-result ok';
+    resultEl.textContent = `${res.elapsed_ms.toFixed(2)}ms · ${res.doc_count} docs`;
+    nameSpan.textContent = name;
+    item.dataset.ms = res.elapsed_ms;
+    if (res.elapsed_ms > maxMs) maxMs = res.elapsed_ms;
+    rescaleBars();
+    // Show result data
+    const panel = item.querySelector('.query-result-data');
+    const pre = item.querySelector('.result-data-body pre');
+    const hdr = item.querySelector('.result-data-header');
+    if (pre && panel) {
+      pre.innerHTML = syntaxHighlight(JSON.stringify(res.result, null, 2));
+      panel.classList.add('visible');
+      if (hdr) hdr.textContent = '▼ Hide results';
+    }
+  } catch(err) {
+    resultEl.className = 'query-result error';
+    resultEl.textContent = `❌ ${err}`;
+  }
+}
+
+document.querySelectorAll('.query-item').forEach(item => {
+  item.querySelector('.run-query-btn').addEventListener('click', () => runItem(item));
+  item.querySelector('.result-data-header').addEventListener('click', () => {
+    const panel = item.querySelector('.query-result-data');
+    const hdr = item.querySelector('.result-data-header');
+    const open = panel.classList.toggle('visible');
+    hdr.textContent = open ? '▼ Hide results' : '▶ Show results';
+  });
+});
+
+// ── Run All ───────────────────────────────────────────────────────────────────
+const runAllBtn = document.getElementById('run-all-btn');
+runAllBtn.addEventListener('click', async () => {
+  runAllBtn.disabled = true;
+  const items = [...document.querySelectorAll('.query-item')];
+  for (const item of items) await runItem(item);
+  runAllBtn.disabled = false;
+});
+
+// ── Insert data ───────────────────────────────────────────────────────────────
+const insertBtn = document.getElementById('insert-btn');
+const insertSummary = document.getElementById('insert-summary');
+const progressWrap = document.getElementById('progress-wrap');
+const progressMsg = document.getElementById('progress-msg');
+const progressFill = document.getElementById('progress-fill');
+
+insertBtn.addEventListener('click', async () => {
+  insertBtn.disabled = true;
+  progressWrap.classList.add('visible');
+  progressFill.style.width = '0%';
+  insertSummary.textContent = '';
+  maxMs = 0;
+  // reset query rows
+  document.querySelectorAll('.query-item').forEach(item => {
+    item.dataset.ms = '';
+    const r = item.querySelector('.query-result');
+    if (r) { r.className = 'query-result'; r.textContent = '—'; }
+    const b = item.querySelector('.query-bar');
+    if (b) b.style.width = '0%';
+    const panel = item.querySelector('.query-result-data');
+    if (panel) panel.classList.remove('visible');
+  });
+
+  const unlisten = await listen('benchmark-progress', e => {
+    const { message, pct } = e.payload;
+    progressMsg.textContent = message;
+    progressFill.style.width = pct + '%';
+  });
+
+  try {
+    const res = await invoke('insert_data', {
+      storageMode: document.getElementById('storage-mode').value,
+      docCount: parseInt(document.getElementById('doc-count').value),
+      dbPath: document.getElementById('db-path').value,
+    });
+    insertSummary.textContent = `✓ ${res.doc_count.toLocaleString()} docs · ${res.insert_ms.toFixed(0)}ms · ${Math.round(res.insert_docs_per_sec).toLocaleString()} docs/s · mode: ${res.storage_mode}`;
+    runAllBtn.disabled = false;
+    startStatsRefresh();
+    startMetricsRefresh();
+  } catch(err) {
+    insertSummary.textContent = `❌ ${err}`;
+  } finally {
+    unlisten();
+    insertBtn.disabled = false;
+    progressWrap.classList.remove('visible');
+  }
+});
+
+// ── Metrics panel ────────────────────────────────────────────────────────────
+let metricsInterval = null;
+
+async function refreshMetrics() {
+  try {
+    const m = await invoke('get_metrics');
+    renderMetrics(m);
+  } catch(e) { /* ignore */ }
+}
+
+function cpuColor(pct) {
+  if (pct >= 85) return 'danger';
+  if (pct >= 60) return 'warn';
+  return 'cpu';
+}
+function ramColor(pct) {
+  if (pct >= 85) return 'danger';
+  if (pct >= 65) return 'warn';
+  return 'ram';
+}
+function diskColor(pct) {
+  if (pct >= 90) return 'danger';
+  if (pct >= 75) return 'warn';
+  return '';
+}
+
+function renderMetrics(m) {
+  const el = document.getElementById('metrics-container');
+  const cpu = m.cpu || {};
+  const ram = m.ram || {};
+  const disks = m.disks || [];
+  const avgCpu = cpu.avg_pct || 0;
+  const cores = cpu.cores || [];
+
+  // CPU gauge
+  let coresHtml = cores.map((c,i) => {
+    const u = c.usage || 0;
+    return `<div class="core-cell"><div class="core-id">C${i}</div><div class="core-pct">${u.toFixed(0)}%</div></div>`;
+  }).join('');
+
+  // RAM gauge
+  const ramPct = ram.used_pct || 0;
+
+  // Disks
+  let disksHtml = disks.map(d => {
+    const pct = d.used_pct || 0;
+    const cls = diskColor(pct);
+    return `<div class="disk-row">
+      <span class="disk-mount" title="${d.mount}">${d.mount}</span>
+      <div class="disk-track"><div class="disk-fill ${cls}" style="width:${Math.min(pct,100)}%"></div></div>
+      <span class="disk-info">${d.used_gb}/${d.total_gb} GB (${pct}%)</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('refresh-dot').style.display = 'inline-block';
+  document.getElementById('refresh-label').textContent = 'live · 2s';
+
+  el.innerHTML = `
+    <div class="metrics-section">
+      <h3>CPU</h3>
+      <div class="gauge-wrap">
+        <div class="gauge-label-row">
+          <span class="gauge-label">Average Usage</span>
+          <span class="gauge-value">${avgCpu.toFixed(1)}%</span>
+        </div>
+        <div class="gauge-track"><div class="gauge-fill ${cpuColor(avgCpu)}" style="width:${Math.min(avgCpu,100)}%"></div></div>
+        <div class="gauge-sub">${cores.length} logical cores${cores.length > 0 ? ' · ' + (cores[0].freq_mhz/1000).toFixed(2) + ' GHz base' : ''}</div>
+        <div class="cores-grid">${coresHtml}</div>
+      </div>
+    </div>
+    <div class="metrics-section">
+      <h3>Memory</h3>
+      <div class="gauge-wrap">
+        <div class="gauge-label-row">
+          <span class="gauge-label">RAM Used</span>
+          <span class="gauge-value">${ramPct.toFixed(1)}%</span>
+        </div>
+        <div class="gauge-track"><div class="gauge-fill ${ramColor(ramPct)}" style="width:${Math.min(ramPct,100)}%"></div></div>
+        <div class="gauge-sub">${ram.used_gb} GB used / ${ram.total_gb} GB total · ${ram.free_gb} GB free</div>
+        <span class="proc-badge">This process: ${ram.process_mb} MB</span>
+      </div>
+    </div>
+    <div class="metrics-section">
+      <h3>Disks</h3>
+      <div class="gauge-wrap">${disksHtml || '<span style="font-size:0.7rem;color:#475569">No disks found</span>'}</div>
+    </div>`;
+}
+
+function startMetricsRefresh() {
+  if (metricsInterval) clearInterval(metricsInterval);
+  refreshMetrics();
+  metricsInterval = setInterval(refreshMetrics, 2000);
+}
+
+// Start metrics immediately on load (no DB needed)
+startMetricsRefresh();
+
+// ── Stats panel ───────────────────────────────────────────────────────────────
+let statsInterval = null;
+
+function fmtUptime(secs) {
+  const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function fmtNum(n) {
+  if (n >= 1_000_000) return (n/1_000_000).toFixed(2) + 'M';
+  if (n >= 1_000) return (n/1_000).toFixed(1) + 'K';
+  return String(n);
+}
+
+async function refreshStats() {
+  try {
+    const data = await invoke('get_stats');
+    renderStats(data);
+  } catch(e) { /* ignore */ }
+}
+
+function renderStats(data) {
+  const el = document.getElementById('stats-container');
+  document.getElementById('no-db-msg')?.remove();
+  document.getElementById('refresh-dot').style.display = 'inline-block';
+  document.getElementById('refresh-label').textContent = 'live · 3s';
+
+  if (data.status === 'no_db') {
+    el.innerHTML = '<div id="no-db-msg">Insert data to see live stats</div>';
+    return;
+  }
+
+  const stats = data.stats || {};
+  const collections = stats.collections || {};
+  const total = stats.total || 0;
+  const uptime = data.uptime_secs || 0;
+  const hotKeys = data.hot_keys || 0;
+  const mode = data.storage_mode || '—';
+
+  // Sort collections by count desc
+  const cols = Object.entries(collections).sort((a,b) => (b[1].count||0) - (a[1].count||0));
+  const maxCount = cols.length > 0 ? (cols[0][1].count || 1) : 1;
+
+  let html = `
+    <div class="stats-section">
+      <h3>Database</h3>
+      <div class="stat-row">
+        <div class="stat-card"><div class="label">Storage Mode</div><div class="value" style="font-size:0.9rem">${mode}</div></div>
+        <div class="stat-card"><div class="label">Uptime</div><div class="value" style="font-size:0.9rem">${fmtUptime(uptime)}</div></div>
+      </div>
+      <div class="stat-row">
+        <div class="stat-card"><div class="label">Total Docs</div><div class="value">${fmtNum(total)}</div></div>
+        <div class="stat-card"><div class="label">Hot Keys</div><div class="value">${fmtNum(hotKeys)}</div></div>
+      </div>
+    </div>`;
+
+  if (cols.length > 0) {
+    html += `<div class="stats-section"><h3>Collections</h3><div class="col-chart"><div class="col-chart-title">Document counts</div>`;
+    cols.forEach(([name, info]) => {
+      const count = info.count || 0;
+      const pct = maxCount > 0 ? (count / maxCount * 100) : 0;
+      html += `<div class="col-bar-row">
+        <span class="col-bar-label" title="${name}">${name}</span>
+        <div class="col-bar-track"><div class="col-bar-fill" style="width:${pct}%"></div></div>
+        <span class="col-bar-count">${fmtNum(count)}</span>
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+function startStatsRefresh() {
+  if (statsInterval) clearInterval(statsInterval);
+  refreshStats();
+  statsInterval = setInterval(refreshStats, 3000);
+}
+</script>
+</body>
+</html>
