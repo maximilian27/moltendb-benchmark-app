@@ -34,30 +34,47 @@ jobs:
 
       - name: Bump version and create tag
         run: |
-          NEW_VERSION=$(node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            const parts = pkg.version.split('.');
-            parts[1] = parseInt(parts[1]) + 1;
-            parts[2] = 0;
-            const newVersion = parts.join('.');
-            pkg.version = newVersion;
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-
-            let cargo = fs.readFileSync('src-tauri/Cargo.toml', 'utf8');
-            cargo = cargo.replace(/^version = \".*\"/m, 'version = \"' + newVersion + '\"');
-            fs.writeFileSync('src-tauri/Cargo.toml', cargo);
-
-            const tauriConf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-            tauriConf.version = newVersion;
-            fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(tauriConf, null, 2) + '\n');
-
-            console.log(newVersion);
-          ")
+          # Write the Node script to a temporary file to avoid escaping issues
+          cat << 'EOF' > bump_script.js
+          const fs = require('fs');
+          
+          // 1. Update package.json
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const parts = pkg.version.split('.');
+          parts[1] = parseInt(parts[1]) + 1;
+          parts[2] = 0;
+          const newVersion = parts.join('.');
+          pkg.version = newVersion;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          
+          // 2. Update Cargo.toml
+          let cargo = fs.readFileSync('src-tauri/Cargo.toml', 'utf8');
+          cargo = cargo.replace(/^version = ".*"/m, `version = "${newVersion}"`);
+          fs.writeFileSync('src-tauri/Cargo.toml', cargo);
+          
+          // 3. Update tauri.conf.json
+          const tauriConf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+          tauriConf.version = newVersion;
+          fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(tauriConf, null, 2) + '\n');
+          
+          // Output the version for bash to capture
+          console.log(newVersion);
+          EOF
+          
+          # Run the script, capture the output, and remove the temp file
+          NEW_VERSION=$(node bump_script.js)
+          rm bump_script.js
+          
+          # Update Cargo.lock
           cd src-tauri && cargo generate-lockfile && cd ..
+          
+          # Git Operations
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json src-tauri/Cargo.lock
           git commit -m "chore: bump version to $NEW_VERSION"
           git tag "v$NEW_VERSION"
-          git push origin master --follow-tags
+          
+          # Push branch and tags
+          git push origin master
+          git push origin "v$NEW_VERSION"
