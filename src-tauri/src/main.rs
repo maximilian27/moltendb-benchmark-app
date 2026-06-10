@@ -131,24 +131,27 @@ fn insert_data_sync(
     let config = match storage_mode.as_str() {
         "inMemory" => DbConfig {
             in_memory: true,
+            max_body_size: 300 * 1024 * 1024,
+            max_keys_per_request: 100_000,
             rate_limit_requests: Some(100000),
-            max_body_size: 100 * 1024 * 1024,
             ..DbConfig::default()
         },
         "sync" => DbConfig {
+            in_memory: false,
+            max_body_size: 300 * 1024 * 1024,
+            max_keys_per_request: 100_000,
             path: db_path.clone(),
             rate_limit_requests: Some(100000),
-            max_body_size: 100 * 1024 * 1024,
             sync_mode: true,
-            in_memory: false,
             ..DbConfig::default()
         },
         "async" => DbConfig {
+            in_memory: false,
+            max_body_size: 300 * 1024 * 1024,
+            max_keys_per_request: 100_000,
             path: db_path.clone(),
             rate_limit_requests: Some(100000),
-            max_body_size: 100 * 1024 * 1024,
             sync_mode: false,
-            in_memory: false,
             ..DbConfig::default()
         },
         other => return Err(format!("Unknown storage mode: {}", other)),
@@ -158,7 +161,7 @@ fn insert_data_sync(
     let db = Db::open(config).map_err(|e| format!("Failed to open DB: {:?}", e))?;
     let actual_mode = db.storage.storage_mode().to_string();
 
-    let batch_size = 25_000.min(doc_count);
+    let batch_size = 15_000.min(doc_count);
     let insert_start = Instant::now();
     let mut inserted = 0usize;
     let num_batches = (doc_count + batch_size - 1) / batch_size;

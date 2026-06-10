@@ -2095,9 +2095,9 @@ dependencies = [
 
 [[package]]
 name = "moltendb-core"
-version = "1.0.0-rc5"
+version = "1.0.0-rc10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a51b2f374c1640e31209dbb27e0b86b667afee7e417688537b9b87d770833f6f"
+checksum = "2d2972bee3cdeddafc05b48cfa9c77f979677fe2858fa36a19f08ae28275ce6b"
 dependencies = [
  "argon2",
  "base64 0.22.1",
